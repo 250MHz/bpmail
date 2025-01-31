@@ -1,0 +1,94 @@
+# .clang-format file based on clang-format 19.1.0.
+# Only C is considered. C++ specific options are untouched.
+# InsertTrailingCommas (as of 19.1.0) only works for JavaScript, so need to
+# add that manually.
+---
+AlignAfterOpenBracket: BlockIndent
+AlignConsecutiveAssignments:
+  Enabled: false
+AlignConsecutiveDeclarations:
+  Enabled: false
+AlignConsecutiveMacros:
+  Enabled: false
+AlignConsecutiveShortCaseStatements:
+  Enabled: false
+AlignEscapedNewlines: DontAlign
+AlignOperands: DontAlign
+AlignTrailingComments:
+  Kind: Never
+AllowAllArgumentsOnNextLine: false
+AllowAllParametersOfDeclarationOnNextLine: false
+AllowShortBlocksOnASingleLine: Empty
+AllowShortCaseExpressionOnASingleLine: false
+AllowShortCaseLabelsOnASingleLine: false
+AllowShortEnumsOnASingleLine: false
+AllowShortFunctionsOnASingleLine: Empty
+AllowShortIfStatementsOnASingleLine: Never
+AllowShortLoopsOnASingleLine: false
+AlwaysBreakAfterReturnType: None
+AlwaysBreakBeforeMultilineStrings: true
+BinPackArguments: false
+BinPackParameters: false
+BraceWrapping:
+  AfterCaseLabel: false
+  AfterControlStatement: MultiLine
+  AfterEnum: false
+  AfterFunction: false
+  AfterStruct: false
+  AfterUnion: false
+  BeforeElse: false
+  BeforeWhile: false
+  IndentBraces: false
+  SplitEmptyFunction: false
+  SplitEmptyRecord: false
+BreakAdjacentStringLiterals: true
+BreakAfterReturnType: Automatic
+BreakBeforeBinaryOperators: NonAssignment
+BreakBeforeBraces: Custom
+BreakBeforeTernaryOperators: true
+BreakStringLiterals: false
+ColumnLimit: 80
+ContinuationIndentWidth: 4
+Cpp11BracedListStyle: true
+DerivePointerAlignment: false
+IncludeBlocks: Regroup
+IncludeCategories:
+  - Regex: '^<[^/].*\.h'
+    Priority: 1
+  - Regex: '^\".*\.h\"'
+    Priority: 2
+IncludeIsMainRegex: "(_.*)?$"
+IndentCaseBlocks: false
+IndentCaseLabels: true
+IndentPPDirectives: None
+IndentWidth: 4
+IndentWrappedFunctionNames: false
+InsertBraces: true
+InsertNewlineAtEOF: true
+InsertTrailingCommas: Wrapped
+KeepEmptyLines:
+  AtEndOfFile: true
+  AtStartOfBlock: false
+  AtStartOfFile: false
+Language: Cpp
+LineEnding: LF
+MaxEmptyLinesToKeep: 1
+PenaltyReturnTypeOnItsOwnLine: 300
+PointerAlignment: Right
+QualifierAlignment: Left
+ReflowComments: false
+SeparateDefinitionBlocks: Leave
+SkipMacroDefinitionBody: false
+SortIncludes: CaseSensitive
+SpaceAfterCStyleCast: false
+SpaceAfterLogicalNot: false
+SpaceAroundPointerQualifiers: Default
+SpaceBeforeAssignmentOperators: true
+SpaceBeforeCaseColon: false
+SpaceBeforeParens: ControlStatementsExceptControlMacros
+SpaceBeforeSquareBrackets: false
+SpacesBeforeTrailingComments: 1
+SpacesInParens: Never
+SpacesInSquareBrackets: false
+UseTab: Never
+

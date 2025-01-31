@@ -1,0 +1,10 @@
+# Temp files
+*~
+# Backup merge file
+*.orig
+# Rejected files
+*.rej
+.DS_store
+.clangd
+.cache
+
