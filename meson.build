@@ -25,16 +25,7 @@ if get_option('broad_warnings')
 endif
 
 lib_bp = cc.find_library('bp', dirs: ['/usr/local/lib'], required: true)
+lib_ici = cc.find_library('ici', dirs: ['/usr/local/lib'], required: true)
 
-exe = executable(
-    'bpmail',
-    'test.c',
-    dependencies: [lib_bp],
-    include_directories: include_directories(
-        '/usr/local/include',
-        is_system: true,
-    ),
-)
-
-test('basic', exe)
+subdir('src')
 
