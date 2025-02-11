@@ -1,0 +1,7 @@
+option(
+    'broad_warnings',
+    type: 'boolean',
+    value: true,
+    description: 'Use broader set of warnings suggested in JPL-D-60411',
+)
+
