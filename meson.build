@@ -30,7 +30,10 @@ exe = executable(
     'bpmail',
     'test.c',
     dependencies: [lib_bp],
-    include_directories: include_directories('/usr/local/include'),
+    include_directories: include_directories(
+        '/usr/local/include',
+        is_system: true,
+    ),
 )
 
 test('basic', exe)
