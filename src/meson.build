@@ -1,10 +1,17 @@
+deps = [lib_bp, lib_ici]
+incdir = include_directories('/usr/local/include', is_system: true)
+
 bpmailsend_exe = executable(
     'bpmailsend',
     'bpmailsend.c',
-    dependencies: [lib_bp, lib_ici],
-    include_directories: include_directories(
-        '/usr/local/include',
-        is_system: true,
-    ),
+    dependencies: deps,
+    include_directories: incdir,
+)
+
+bpmailrecv_exe = executable(
+    'bpmailrecv',
+    'bpmailrecv.c',
+    dependencies: deps,
+    include_directories: incdir,
 )
 
