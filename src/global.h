@@ -1,3 +1,5 @@
+#define _POSIX_C_SOURCE 200809L /* Required for sigaction(2) in glibc */
+
 #ifndef GLOBAL_H
 #define GLOBAL_H
 

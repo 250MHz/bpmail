@@ -24,6 +24,14 @@ if get_option('broad_warnings')
     )
 endif
 
+# On FreeBSD, ION headers use system headers that use nonstandard C types which
+# are only available when __BSD_VISIBLE is defined. When _POSIX_C_SOURCE is
+# defined, sys/cdefs.h will disable these nonstandard types, so we need to
+# define __BSD_VISIBLE to enable them.
+if build_machine.system() == 'freebsd'
+    add_project_arguments('-D__BSD_VISIBLE', language: 'c')
+endif
+
 lib_bp = cc.find_library('bp', dirs: ['/usr/local/lib'], required: true)
 lib_ici = cc.find_library('ici', dirs: ['/usr/local/lib'], required: true)
 
