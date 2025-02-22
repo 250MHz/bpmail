@@ -1,0 +1,58 @@
+## begin ionadmin
+# Initialization command
+# - Node number 1
+# - Default SDR configuration ('')
+1 1 ''
+
+# Start ION
+s
+
+# Add a contact
+# - Start at +1 seconds from now, end +3600 seconds from now
+# - Source node 1 to destination node 1
+# - Transmit at 100_000 bytes/s
+a contact +1 +3600 1 1 100000
+
+# Add a range (physical distance between nodes)
+# - Start at +1 seconds from now, end +3600 seconds from now
+# - Node 1 to node 1
+# - 0 light seconds
+a range +1 +3600 1 1 0
+
+# Produce and consume at 1_000_000 bytes/s
+m production 1000000
+m consumption 1000000
+## end ionadmin
+
+
+## begin bpadmin
+# Initialization command
+1
+
+# Add EID scheme
+a scheme ipn 'ipnfw' 'ipnadminep'
+
+# Add endpoints
+# - Service numbers 25 and 52, and queue when there is no application currenlty
+#   accepting bundles
+a endpoint ipn:1.25 q
+a endpoint ipn:1.52 q
+
+# Add TCP protocol
+a protocol tcp
+
+# Add loopback ducts
+a induct tcp 0.0.0.0:4556 tcpcli
+a outduct tcp 127.0.0.1:4556 tcpclo
+
+# Start the daemons
+s
+## end bpadmin
+
+
+## begin ipnadmin
+# Add egress plan. Bundles to be transmitted to node number 1 use the 'tcp'
+# protocol at the outduct identified by 127.0.0.1
+a plan 1 tcp/127.0.0.1:4556
+## end ipnadmin
+
