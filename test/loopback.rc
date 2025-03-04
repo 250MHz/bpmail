@@ -37,6 +37,9 @@ a scheme ipn 'ipnfw' 'ipnadminep'
 #   accepting bundles
 a endpoint ipn:1.25 q
 a endpoint ipn:1.52 q
+# DTPC API is hardcoded to use 128 for sending and 129 for receiving
+a endpoint ipn:1.128 q
+a endpoint ipn:1.129 q
 
 # Add TCP protocol
 a protocol tcp
@@ -55,4 +58,21 @@ s
 # protocol at the outduct identified by 127.0.0.1
 a plan 1 tcp/127.0.0.1:4556
 ## end ipnadmin
+
+
+## begin dtpcadmin
+# Initialization command
+1
+
+# Profile ID 1, retransmit the ADU a maximum of 5 times. ASL of 1000 bytes and
+# ATL of 4 seconds (smallest ATL I could get to work; would prefer to disable
+# aggregation and elision altogether using 0 and 0, but this breaks stuff for
+# some reason). Bundles have a TTL of 10 minutes, are not subject to custody
+# transfer, are sent at "standard" priority, and will not be tracked by any
+# bundle status report production.
+a profile 1 5 1000 4 600 0.1 dtn:none
+
+# Start daemon
+s
+## end dtpcadmin
 
