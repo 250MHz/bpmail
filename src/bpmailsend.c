@@ -1,25 +1,17 @@
 #include "bpmailsend.h"
 
-#include <errno.h>
-#include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
 
 #include "bp.h"
-#include "dtpc.h"
 
-static char *dest_eid = NULL;
-static unsigned int profile_id = 0;
-static struct dtpcsap_st *sap = NULL;
 static struct sdrv_str *sdr = NULL;
+static struct bpsap_st *sap = NULL;
+static char *dest_eid = NULL;
 
 static void usage(void) {
-    (void)fprintf(
-        stderr,
-        "%s\n",
-        "usage: bpmailsend [ -t topic_id ] profile_id dest_eid"
-    );
+    (void)fprintf(stderr, "usage: bpmailsend own_eid dest_eid\n");
     exit(EXIT_FAILURE);
 }
 
@@ -44,16 +36,6 @@ static int bpmailsend(void) {
         return EXIT_FAILURE;
     }
 
-    /*
-     * TODO: DTPC API uses unsigned int to specify content size, so we can't
-     * send more than UINT_MAX at once. We should allocate and send multiple
-     * times rather than just once.
-     */
-    if (content_size > UINT_MAX) {
-        (void)fprintf(stderr, "content too large to send\n");
-        return EXIT_FAILURE;
-    }
-
     if (sdr_begin_xn(sdr) == 0) {
         (void)fprintf(stderr, "could not initiate a SDR transaction\n");
         free(content);
@@ -66,51 +48,49 @@ static int bpmailsend(void) {
     /*    return EXIT_FAILURE;*/
     /*}*/
 
-    SdrObject adu_payload =
-        sdr_insert(sdr, content, (unsigned long)content_size);
+    SdrObject bundle_payload = sdr_insert(sdr, content, (size_t)content_size);
     if (sdr_end_xn(sdr) != 0) {
-        (void)fprintf(stderr, "could not copy data into SDR\n");
+        (void)fprintf(stderr, "could not copy mail content into a bundle\n");
         free(content);
         return EXIT_FAILURE;
     }
 
-    switch (dtpc_send(
-        profile_id,
-        sap,
-        dest_eid,
+    SdrObject bundle_zco = ionCreateZco(
+        ZcoSdrSource,
+        bundle_payload,
         0,
-        0,
-        0,
-        0,
-        NULL,
-        0,
-        NoCustodyRequested,
-        NULL,
+        content_size,
         BP_STD_PRIORITY,
-        adu_payload,
-        (unsigned int)content_size
-    ))
+        0,
+        ZcoOutbound,
+        NULL /* TODO: make the call to ionCreateZco blocking */
+    );
+    if (bundle_zco == 0 || bundle_zco == (SdrObject)ERROR) {
+        (void)fprintf(stderr, "could not create ZCO\n");
+        free(content);
+        return EXIT_FAILURE;
+    }
+
+    /* TODO: do not hard code lifespan, classOfService, custodySwitch */
+    /* TODO: consider finding a use for srrFlags and ackRequested */
+    if (bp_send(
+            sap,
+            dest_eid,
+            NULL,
+            86400,
+            BP_STD_PRIORITY,
+            NoCustodyRequested,
+            0,
+            0,
+            NULL,
+            bundle_zco,
+            NULL
+        )
+        <= 0)
     {
-        case -1:
-            (void)fprintf(stderr, "system failure from dtpc_send\n");
-            free(content);
-            return EXIT_FAILURE;
-        case 0:
-            (void)fprintf(stderr, "could not send payload\n");
-            free(content);
-            if (sdr_begin_xn(sdr) == 0) {
-                (void)fprintf(stderr, "could not initiate a SDR transaction\n");
-                return EXIT_FAILURE;
-            }
-            sdr_free(sdr, adu_payload);
-            if (sdr_end_xn(sdr) != 0) {
-                (void)fprintf(stderr, "could not free ADU memory from SDR\n");
-            }
-            return EXIT_FAILURE;
-        case 1:
-            /* Fall through */
-        default:
-            break;
+        (void)fprintf(stderr, "could not send bundle\n");
+        free(content);
+        return EXIT_FAILURE;
     }
 
     free(content);
@@ -118,71 +98,35 @@ static int bpmailsend(void) {
 }
 
 int main(int argc, char **argv) {
-    int ch;
-    unsigned int topic_id = 25;
-    while ((ch = getopt(argc, argv, "t:")) != -1) {
-        switch (ch) {
-            case 't':
-                errno = 0;
-                unsigned long tflag = strtoul(optarg, NULL, 0);
-                if (errno != 0) {
-                    perror("strtoul()");
-                    exit(EXIT_FAILURE);
-                }
-                if (tflag > UINT_MAX) {
-                    (void)fprintf(stderr, "topic_id out of range\n");
-                    exit(EXIT_FAILURE);
-                }
-                topic_id = (unsigned int)tflag;
-                break;
-            default:
-                usage();
-        }
-    }
-    argc -= optind;
-    argv += optind;
-
-    if (argc != 2) {
+    if (argc != 3) {
         usage();
     }
+    char *own_eid = argv[1];
+    dest_eid = argv[2];
 
-    errno = 0;
-    unsigned long _profile_id = strtoul(argv[0], NULL, 0);
-    if (errno != 0) {
-        perror("strtoul()");
-        exit(EXIT_FAILURE);
-    }
-    if (_profile_id > UINT_MAX) {
-        (void)fprintf(stderr, "profile_id out of range\n");
-        exit(EXIT_FAILURE);
-    }
-    profile_id = (unsigned int)_profile_id;
-
-    dest_eid = argv[1];
-
-    if (dtpc_attach() != 0) {
-        (void)fprintf(stderr, "could not attach to DTPC\n");
+    if (bp_attach() != 0) {
+        (void)fprintf(stderr, "could not attach to BP\n");
         exit(EXIT_FAILURE);
     }
 
-    if (dtpc_open(topic_id, NULL, &sap) != 0) {
-        (void)fprintf(stderr, "could not open topic %u\n", topic_id);
-        dtpc_detach();
+    if (bp_open(own_eid, &sap) != 0) {
+        (void)fprintf(stderr, "could not open own endpoint %s\n", own_eid);
+        bp_detach();
         exit(EXIT_FAILURE);
     }
 
     sdr = bp_get_sdr();
     if (sdr == NULL) {
         (void)fprintf(stderr, "could not obtain handle for SDR\n");
-        dtpc_close(sap);
-        dtpc_detach();
+        bp_close(sap);
+        bp_detach();
         exit(EXIT_FAILURE);
     }
 
     int retval = bpmailsend();
 
-    dtpc_close(sap);
-    dtpc_detach();
-    return retval;
+    bp_close(sap);
+    bp_detach();
+    exit(retval);
 }
 

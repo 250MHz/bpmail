@@ -1,109 +1,99 @@
 #include "bpmailrecv.h"
 
-#include <errno.h>
-#include <limits.h>
 #include <signal.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 
 #include "bp.h"
-#include "dtpc.h"
 
 static struct sdrv_str *sdr = NULL;
-static struct dtpcsap_st *sap = NULL;
+static struct bpsap_st *sap = NULL;
 
 static void usage(void) {
-    (void)fprintf(stderr, "usage: bpmailrecv [ -t topic_id ]\n");
+    (void)fprintf(stderr, "usage: bpmailrecv own_eid\n");
     exit(EXIT_FAILURE);
 }
 
 static int bpmailrecv(void) {
-    DtpcDelivery dlv;
+    BpDelivery dlv;
 
-    if (dtpc_receive(sap, &dlv, BP_BLOCKING) != 0) {
-        (void)fprintf(stderr, "could not receive DTPC application data unit\n");
+    if (bp_receive(sap, &dlv, BP_BLOCKING) != 0) {
+        (void)fprintf(stderr, "could not receive bundle\n");
         return EXIT_FAILURE;
     }
 
-    if (dlv.result != PayloadPresent) {
-        dtpc_release_delivery(&dlv);
+    if (dlv.result != BpPayloadPresent) {
+        bp_release_delivery(&dlv, 1);
         return EXIT_SUCCESS;
     }
 
     /* TODO: handle case when bundle sizes are larger than 2^63-1 */
-    uint64_t buffer_len = 1024;
+    ZcoReader reader;
+    int64_t buffer_len = 1024;
     char buffer[buffer_len];
 
-    uint64_t bundle_len_remaining = dlv.length;
+    if (sdr_begin_xn(sdr) == 0) {
+        (void)fprintf(stderr, "could not initiate a SDR transaction\n");
+        bp_release_delivery(&dlv, 1);
+        return EXIT_FAILURE;
+    }
+    int64_t bundle_len_remaining = zco_source_data_length(sdr, dlv.adu);
+    sdr_exit_xn(sdr);
 
+    zco_start_receiving(dlv.adu, &reader);
     while (bundle_len_remaining > 0) {
-        uint64_t read_len = bundle_len_remaining < buffer_len
+        int64_t read_len = bundle_len_remaining < buffer_len
             ? bundle_len_remaining
             : buffer_len;
-        sdr_read(sdr, buffer, dlv.item, read_len);
-        size_t ret = fwrite(buffer, sizeof(*buffer), read_len, stdout);
-        if (ret != read_len) {
+        if (sdr_begin_xn(sdr) == 0) {
+            (void)fprintf(stderr, "could not initiate a SDR transaction\n");
+            break;
+        }
+        int64_t rc = zco_receive_source(sdr, &reader, read_len, buffer);
+        if (sdr_end_xn(sdr) != 0 || rc <= 0) {
+            (void)fprintf(stderr, "error extracting data from ZCO\n");
+            break;
+        }
+        size_t ret = fwrite(buffer, sizeof(*buffer), (uint64_t)rc, stdout);
+        if (ret != (size_t)rc) {
             (void)fprintf(stderr, "error writing data to stdout\n");
         }
-        bundle_len_remaining -= read_len;
+        bundle_len_remaining -= rc;
     }
     (void)fflush(stdout);
 
-    dtpc_release_delivery(&dlv);
+    bp_release_delivery(&dlv, 1);
     return EXIT_SUCCESS;
 }
 
 static void handle_interrupt(int sig) {
     (void)sig;
-    dtpc_interrupt(sap);
+    bp_interrupt(sap);
 }
 
 int main(int argc, char **argv) {
-    int ch;
-    unsigned int topic_id = 25;
-    while ((ch = getopt(argc, argv, "t:")) != -1) {
-        switch (ch) {
-            case 't':
-                errno = 0;
-                unsigned long tflag = strtoul(optarg, NULL, 0);
-                if (errno != 0) {
-                    perror("strtoul()");
-                    exit(EXIT_FAILURE);
-                }
-                if (tflag > UINT_MAX) {
-                    (void)fprintf(stderr, "topic_id out of range\n");
-                    exit(EXIT_FAILURE);
-                }
-                topic_id = (unsigned int)tflag;
-                break;
-            default:
-                usage();
-        }
-    }
-    argc -= optind;
-    argv += optind;
-
-    if (argc != 0) {
+    if (argc != 2) {
         usage();
     }
+    char *own_eid = argv[1];
 
-    if (dtpc_attach() != 0) {
-        (void)fprintf(stderr, "could not attach to DTPC\n");
+    if (bp_attach() != 0) {
+        (void)fprintf(stderr, "could not attach to BP\n");
         exit(EXIT_FAILURE);
     }
 
-    if (dtpc_open(topic_id, NULL, &sap) != 0) {
-        (void)fprintf(stderr, "could not open topic %u\n", topic_id);
-        dtpc_detach();
+    if (bp_open(own_eid, &sap) != 0) {
+        (void)fprintf(stderr, "could not open own endpoint %s\n", own_eid);
+        bp_detach();
         exit(EXIT_FAILURE);
     }
 
     sdr = bp_get_sdr();
     if (sdr == NULL) {
         (void)fprintf(stderr, "could not obtain handle for SDR\n");
-        dtpc_close(sap);
-        dtpc_detach();
+        bp_close(sap);
+        bp_detach();
         exit(EXIT_FAILURE);
     }
 
@@ -111,15 +101,15 @@ int main(int argc, char **argv) {
     act.sa_handler = &handle_interrupt;
     if (sigaction(SIGINT, &act, NULL) == -1) {
         perror("sigaction");
-        dtpc_close(sap);
-        dtpc_detach();
+        bp_close(sap);
+        bp_detach();
         exit(EXIT_FAILURE);
     }
 
     int retval = bpmailrecv();
 
-    dtpc_close(sap);
-    dtpc_detach();
+    bp_close(sap);
+    bp_detach();
     return retval;
 }
 

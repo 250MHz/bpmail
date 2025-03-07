@@ -1,4 +1,4 @@
-deps = [lib_bp, lib_dtpc, lib_ici]
+deps = [lib_bp, lib_ici]
 incdir = include_directories('/usr/local/include', is_system: true)
 
 bpmailsend_exe = executable(

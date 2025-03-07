@@ -33,9 +33,10 @@ m consumption 1000000
 a scheme ipn 'ipnfw' 'ipnadminep'
 
 # Add endpoints
-# DTPC API is hardcoded to use 128 for sending and 129 for receiving
-a endpoint ipn:1.128 q
-a endpoint ipn:1.129 q
+# - Service numbers 25 and 52, and queue when there is no application currenlty
+#   accepting bundles
+a endpoint ipn:1.25 q
+a endpoint ipn:1.52 q
 
 # Add TCP protocol
 a protocol tcp
@@ -54,19 +55,4 @@ s
 # protocol at the outduct identified by 127.0.0.1
 a plan 1 tcp/127.0.0.1:4556
 ## end ipnadmin
-
-
-## begin dtpcadmin
-# Initialization command
-1
-
-# Profile ID 1. Retransmit 0 times, ASL of 0 bytes and ATL of 4 seconds
-# (disables aggregation and elision). Bundles have a TTL of 10 minutes, are not
-# subject to custody transfer, are sent at "standard" priority, and will not be
-# tracked by any bundle status report production.
-a profile 1 0 0 0 600 0.1 dtn:none
-
-# Start daemon
-s
-## end dtpcadmin
 

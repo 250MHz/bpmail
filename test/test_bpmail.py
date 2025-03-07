@@ -6,8 +6,8 @@ from typing import Sequence
 
 import pytest
 
-profile_id = '1'
-dest_eid = 'ipn:1.129'
+src_eid = 'ipn:1.25'
+dest_eid = 'ipn:1.52'
 test_dir_str = os.getenv('TEST_DIR', 'test')
 
 
@@ -55,22 +55,24 @@ class TestWithIon:
     def test_basic(self):
         with open(f'{test_dir_str}/message.txt', mode='rb') as message:
             message = message.read()
-            run_bpmailsend(profile_id, dest_eid, input=message)
-            recv = run_bpmailrecv()
+            run_bpmailsend(src_eid, dest_eid, input=message)
+            recv = run_bpmailrecv(dest_eid)
             assert message == recv.stdout
 
     def test_send_no_content(self):
-        send = run_bpmailsend(profile_id, dest_eid, check=False)
+        send = run_bpmailsend(src_eid, dest_eid, check=False)
         assert send.returncode != 0
         assert b'nothing to send' in send.stderr
 
-    def test_send_unknown_profile(self):
-        # capture_output=True makes the test flaky. dtpc_send() is strange when
-        # it errors. So we won't test the error message
-        send = run_bpmailsend(
-            '34', dest_eid, input=b'blah\0', capture_output=False, check=False
-        )
+    def test_send_unknown_eid(self):
+        send = run_bpmailsend('blah', dest_eid, check=False)
         assert send.returncode != 0
+        assert b'could not open own endpoint blah' in send.stderr
+
+    def test_recv_unknown_eid(self):
+        recv = run_bpmailrecv('blah', check=False)
+        assert recv.returncode != 0
+        assert b'could not open own endpoint blah' in recv.stderr
 
 
 def test_send_missing_args():
@@ -79,62 +81,20 @@ def test_send_missing_args():
     assert b'usage' in send.stderr
 
 
-def test_send_profile_id_validation():
-    send = run_bpmailsend(str(2**65), dest_eid, check=False)
-    assert send.returncode != 0
-    assert b'strtoul(): Result too large' in send.stderr
-
-    send = run_bpmailsend(str(2**33), dest_eid, check=False)
-    assert send.returncode != 0
-    assert b'profile_id out of range' in send.stderr
-
-    send = run_bpmailsend('blah', dest_eid, check=False)
-    assert send.returncode != 0
-    assert b'strtoul(): Invalid argument' in send.stderr
-
-
-def test_send_topic_id_validation():
-    send = run_bpmailsend(f'-t {2**65}', check=False)
-    assert send.returncode != 0
-    assert b'strtoul(): Result too large' in send.stderr
-
-    send = run_bpmailsend(f'-t {2**33}', check=False)
-    assert send.returncode != 0
-    assert b'topic_id out of range' in send.stderr
-
-    send = run_bpmailsend('-t blah', check=False)
-    assert send.returncode != 0
-    assert b'strtoul(): Invalid argument' in send.stderr
-
-
-def test_recv_topic_id_validation():
-    recv = run_bpmailrecv(f'-t {2**65}', check=False)
-    assert recv.returncode != 0
-    assert b'strtoul(): Result too large' in recv.stderr
-
-    recv = run_bpmailrecv(f'-t {2**33}', check=False)
-    assert recv.returncode != 0
-    assert b'topic_id out of range' in recv.stderr
-
-    recv = run_bpmailrecv('-t blah', check=False)
-    assert recv.returncode != 0
-    assert b'strtoul(): Invalid argument' in recv.stderr
-
-
-def test_recv_extra_args():
-    recv = run_bpmailrecv('blah', check=False)
+def test_recv_missing_args():
+    recv = run_bpmailrecv(check=False)
     assert recv.returncode != 0
     assert b'usage' in recv.stderr
 
 
 def test_send_ion_not_running():
-    send = run_bpmailsend(profile_id, dest_eid, check=False)
+    send = run_bpmailsend(src_eid, dest_eid, check=False)
     assert send.returncode != 0
-    assert b'could not attach to DTPC' in send.stderr
+    assert b'could not attach to BP' in send.stderr
 
 
 def test_recv_ion_not_running():
-    recv = run_bpmailrecv(check=False)
+    recv = run_bpmailrecv(dest_eid, check=False)
     assert recv.returncode != 0
-    assert b'could not attach to DTPC' in recv.stderr
+    assert b'could not attach to BP' in recv.stderr
 

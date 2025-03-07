@@ -33,7 +33,6 @@ if build_machine.system() == 'freebsd'
 endif
 
 lib_bp = cc.find_library('bp', dirs: ['/usr/local/lib'], required: true)
-lib_dtpc = cc.find_library('dtpc', dirs: ['/usr/local/lib'], required: true)
 lib_ici = cc.find_library('ici', dirs: ['/usr/local/lib'], required: true)
 
 subdir('src')
