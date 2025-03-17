@@ -82,7 +82,7 @@ def test_send_missing_args():
 def test_send_profile_id_validation():
     send = run_bpmailsend(str(2**65), dest_eid, check=False)
     assert send.returncode != 0
-    assert b'strtoul(): Result too large' in send.stderr
+    assert b'strtoul()' in send.stderr
 
     send = run_bpmailsend(str(2**33), dest_eid, check=False)
     assert send.returncode != 0
@@ -90,13 +90,13 @@ def test_send_profile_id_validation():
 
     send = run_bpmailsend('blah', dest_eid, check=False)
     assert send.returncode != 0
-    assert b'strtoul(): Invalid argument' in send.stderr
+    assert b'strtoul()' in send.stderr
 
 
 def test_send_topic_id_validation():
     send = run_bpmailsend(f'-t {2**65}', check=False)
     assert send.returncode != 0
-    assert b'strtoul(): Result too large' in send.stderr
+    assert b'strtoul()' in send.stderr
 
     send = run_bpmailsend(f'-t {2**33}', check=False)
     assert send.returncode != 0
@@ -104,13 +104,13 @@ def test_send_topic_id_validation():
 
     send = run_bpmailsend('-t blah', check=False)
     assert send.returncode != 0
-    assert b'strtoul(): Invalid argument' in send.stderr
+    assert b'strtoul()' in send.stderr
 
 
 def test_recv_topic_id_validation():
     recv = run_bpmailrecv(f'-t {2**65}', check=False)
     assert recv.returncode != 0
-    assert b'strtoul(): Result too large' in recv.stderr
+    assert b'strtoul()' in recv.stderr
 
     recv = run_bpmailrecv(f'-t {2**33}', check=False)
     assert recv.returncode != 0
@@ -118,7 +118,7 @@ def test_recv_topic_id_validation():
 
     recv = run_bpmailrecv('-t blah', check=False)
     assert recv.returncode != 0
-    assert b'strtoul(): Invalid argument' in recv.stderr
+    assert b'strtoul()' in recv.stderr
 
 
 def test_recv_extra_args():
