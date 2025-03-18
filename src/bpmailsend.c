@@ -119,12 +119,16 @@ static int bpmailsend(void) {
 
 int main(int argc, char **argv) {
     int ch;
+    char *endptr;
     unsigned int topic_id = 25;
     while ((ch = getopt(argc, argv, "t:")) != -1) {
         switch (ch) {
             case 't':
                 errno = 0;
-                unsigned long tflag = strtoul(optarg, NULL, 0);
+                unsigned long tflag = strtoul(optarg, &endptr, 0);
+                if (optarg == endptr) {
+                    errno = EINVAL;
+                }
                 if (errno != 0) {
                     perror("strtoul()");
                     exit(EXIT_FAILURE);
@@ -147,7 +151,10 @@ int main(int argc, char **argv) {
     }
 
     errno = 0;
-    unsigned long _profile_id = strtoul(argv[0], NULL, 0);
+    unsigned long _profile_id = strtoul(argv[0], &endptr, 0);
+    if (argv[0] == endptr) {
+        errno = EINVAL;
+    }
     if (errno != 0) {
         perror("strtoul()");
         exit(EXIT_FAILURE);

@@ -66,7 +66,11 @@ int main(int argc, char **argv) {
         switch (ch) {
             case 't':
                 errno = 0;
-                unsigned long tflag = strtoul(optarg, NULL, 0);
+                char *endptr;
+                unsigned long tflag = strtoul(optarg, &endptr, 0);
+                if (optarg == endptr) {
+                    errno = EINVAL;
+                }
                 if (errno != 0) {
                     perror("strtoul()");
                     exit(EXIT_FAILURE);
