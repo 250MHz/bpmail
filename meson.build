@@ -35,6 +35,36 @@ endif
 lib_bp = cc.find_library('bp', dirs: ['/usr/local/lib'], required: true)
 lib_dtpc = cc.find_library('dtpc', dirs: ['/usr/local/lib'], required: true)
 lib_ici = cc.find_library('ici', dirs: ['/usr/local/lib'], required: true)
+# lib_cares = cc.find_library('cares', dirs: ['/usr/local/lib'], required: true)
+cares_dep = dependency('libcares')
+
+temp_exe = executable(
+    'temp',
+    'temp.c',
+    dependencies: [cares_dep],
+    include_directories: include_directories(
+        '/usr/local/include',
+        is_system: true,
+    ),
+)
+
+hello = executable(
+    'hello',
+    'hello.c',
+    dependencies: [dependency('gmime-3.0', required: true)],
+    include_directories: include_directories(
+        '/usr/local/include',
+        is_system: true,
+    ),
+)
+
+subdir('third_party')
+addr_exe = executable(
+    'addr',
+    'addr.c',
+    include_directories: [include_directories('third_party')],
+    link_with: [dovecot_parser_lib],
+)
 
 subdir('src')
 subdir('test')

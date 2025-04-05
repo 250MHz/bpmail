@@ -64,7 +64,8 @@ a plan 1 tcp/127.0.0.1:4556
 # (disables aggregation and elision). Bundles have a TTL of 10 minutes, are not
 # subject to custody transfer, are sent at "standard" priority, and will not be
 # tracked by any bundle status report production.
-a profile 1 0 0 0 600 0.1 dtn:none
+#a profile 1 0 0 4 600 0.1 dtn:none
+a profile 1 5 1000 4 600 0.1 dtn:none
 
 # Start daemon
 s
