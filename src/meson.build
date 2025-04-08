@@ -1,4 +1,5 @@
-deps = [lib_bp, lib_dtpc, lib_ici]
+zdep = dependency('zlib')
+deps = [lib_bp, lib_dtpc, lib_ici, zdep]
 incdir = include_directories('/usr/local/include', is_system: true)
 
 bpmailsend_exe = executable(
@@ -6,6 +7,7 @@ bpmailsend_exe = executable(
     'bpmailsend.c',
     dependencies: deps,
     include_directories: incdir,
+    install: true,
 )
 
 bpmailrecv_exe = executable(
@@ -13,5 +15,6 @@ bpmailrecv_exe = executable(
     'bpmailrecv.c',
     dependencies: deps,
     include_directories: incdir,
+    install: true,
 )
 
