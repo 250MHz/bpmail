@@ -6,6 +6,8 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
+#include <zlib.h>
 
 #include "bp.h"
 #include "dtpc.h"
@@ -31,25 +33,34 @@ static int bpmailrecv(void) {
         return EXIT_SUCCESS;
     }
 
-    /* TODO: handle case when bundle sizes are larger than 2^63-1 */
-    uint64_t buffer_len = 1024;
-    char buffer[buffer_len];
-
-    uint64_t bundle_len_remaining = dlv.length;
-
-    while (bundle_len_remaining > 0) {
-        uint64_t read_len = bundle_len_remaining < buffer_len
-            ? bundle_len_remaining
-            : buffer_len;
-        sdr_read(sdr, buffer, dlv.item, read_len);
-        size_t ret = fwrite(buffer, sizeof(*buffer), read_len, stdout);
-        if (ret != read_len) {
-            (void)fprintf(stderr, "error writing data to stdout\n");
-        }
-        bundle_len_remaining -= read_len;
+    char *received_data = malloc(dlv.length);
+    if (!received_data) {
+        fprintf(stderr, "malloc failed\n");
+        dtpc_release_delivery(&dlv);
+        return EXIT_FAILURE;
     }
-    (void)fflush(stdout);
 
+    sdr_read(sdr, received_data, dlv.item, dlv.length);
+
+    if (dlv.length > 4 && strncmp(received_data, "ZLIB", 4) == 0) {
+        Bytef *decompressed = malloc(1024 * 1024);  // 1MB buffer
+        uLongf decompressed_size = 1024 * 1024;
+        if (uncompress(decompressed, &decompressed_size,
+                       (Bytef *)(received_data + 4), (uLong)(dlv.length - 4)) != Z_OK) {
+            fprintf(stderr, "decompression failed\n");
+            free(received_data);
+            free(decompressed);
+            dtpc_release_delivery(&dlv);
+            return EXIT_FAILURE;
+        }
+        fwrite(decompressed, 1, decompressed_size, stdout);
+        free(decompressed);
+    } else {
+        fwrite(received_data, 1, dlv.length, stdout);
+    }
+
+    fflush(stdout);
+    free(received_data);
     dtpc_release_delivery(&dlv);
     return EXIT_SUCCESS;
 }
@@ -126,4 +137,3 @@ int main(int argc, char **argv) {
     dtpc_detach();
     return retval;
 }
-

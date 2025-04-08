@@ -5,6 +5,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
+#include <string.h>
+#include <zlib.h>  // for compression
 
 #include "bp.h"
 #include "dtpc.h"
@@ -12,7 +14,7 @@
 static char *dest_eid = NULL;
 static unsigned int profile_id = 0;
 static struct dtpcsap_st *sap = NULL;
-static struct sdrv_str *sdr = NULL;
+static Sdr sdr = NULL;
 
 static void usage(void) {
     (void)fprintf(
@@ -51,14 +53,39 @@ static int bpmailsend(void) {
      */
     if (content_size > UINT_MAX) {
         (void)fprintf(stderr, "content too large to send\n");
+        free(content);
         return EXIT_FAILURE;
     }
+
+    // Compress content using zlib
+    const char magic[] = "ZLIB";  // magic header to identify compressed content
+    uLongf compressed_size = compressBound((uLongf)content_size);
+    Bytef *compressed = malloc(strlen(magic) + compressed_size);
+
+    if (!compressed) {
+        fprintf(stderr, "malloc failed\n");
+        free(content);
+        return EXIT_FAILURE;
+    }
+
+    memcpy(compressed, magic, strlen(magic));
+    if (compress(compressed + strlen(magic), &compressed_size,
+                 (Bytef *)content, (uLong)content_size) != Z_OK) {
+        fprintf(stderr, "compression failed\n");
+        free(content);
+        free(compressed);
+        return EXIT_FAILURE;
+    }
+
+    compressed_size += strlen(magic);  // include header in size
 
     if (sdr_begin_xn(sdr) == 0) {
         (void)fprintf(stderr, "could not initiate a SDR transaction\n");
         free(content);
+        free(compressed);
         return EXIT_FAILURE;
     }
+
     /* TODO: verify if we need this check */
     /*if (sdr_heap_depleted(sdr) != 0) {*/
     /*    sdr_exit_xn(sdr);*/
@@ -66,15 +93,17 @@ static int bpmailsend(void) {
     /*    return EXIT_FAILURE;*/
     /*}*/
 
+
     SdrObject adu_payload =
-        sdr_insert(sdr, content, (unsigned long)content_size);
+        sdr_insert(sdr, (char *)compressed, (unsigned long)compressed_size);
     if (sdr_end_xn(sdr) != 0) {
         (void)fprintf(stderr, "could not copy data into SDR\n");
         free(content);
+        free(compressed);
         return EXIT_FAILURE;
     }
 
-    switch (dtpc_send(
+    int result = dtpc_send(
         profile_id,
         sap,
         dest_eid,
@@ -88,16 +117,20 @@ static int bpmailsend(void) {
         NULL,
         BP_STD_PRIORITY,
         adu_payload,
-        (unsigned int)content_size
-    ))
-    {
+        (unsigned int)compressed_size
+    );
+
+    switch (result) {
         case -1:
             (void)fprintf(stderr, "system failure from dtpc_send\n");
             free(content);
+            free(compressed);
             return EXIT_FAILURE;
+
         case 0:
             (void)fprintf(stderr, "could not send payload\n");
             free(content);
+            free(compressed);
             if (sdr_begin_xn(sdr) == 0) {
                 (void)fprintf(stderr, "could not initiate a SDR transaction\n");
                 return EXIT_FAILURE;
@@ -107,6 +140,7 @@ static int bpmailsend(void) {
                 (void)fprintf(stderr, "could not free ADU memory from SDR\n");
             }
             return EXIT_FAILURE;
+
         case 1:
             /* Fall through */
         default:
@@ -114,6 +148,7 @@ static int bpmailsend(void) {
     }
 
     free(content);
+    free(compressed);
     return EXIT_SUCCESS;
 }
 
@@ -192,4 +227,3 @@ int main(int argc, char **argv) {
     dtpc_detach();
     return retval;
 }
-
