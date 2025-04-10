@@ -20,6 +20,79 @@ static void usage(void) {
     exit(EXIT_FAILURE);
 }
 
+/*
+ * Decompress zlib data dynamically using the inflate API.
+ * This avoids imposing a hard limit like 1MB on message size.
+ */
+static Bytef *inflate_dynamic(const Bytef *in, size_t in_len, size_t *out_len) {
+    int ret;
+    z_stream strm;
+    Bytef *out = NULL;
+    size_t out_capacity = 16384; /* Start with 16KB */
+    size_t out_size = 0;
+
+    out = malloc(out_capacity);
+    if (out == NULL) {
+        return NULL;
+    }
+
+    memset(&strm, 0, sizeof(strm));
+
+    /* zlib only accepts uInt for avail_in, so we must check and cast safely */
+    if (in_len > UINT_MAX) {
+        free(out);
+        return NULL; /* input too large for zlib */
+    }
+
+    strm.next_in = (Bytef *)(uintptr_t)in; /* safe cast from const */
+    strm.avail_in = (uInt)in_len;
+
+    if ((ret = inflateInit(&strm)) != Z_OK) {
+        free(out);
+        return NULL;
+    }
+
+    do {
+        size_t remaining = out_capacity - out_size;
+
+        /* zlib requires avail_out to be uInt */
+        if (remaining > UINT_MAX) {
+            inflateEnd(&strm);
+            free(out);
+            return NULL; /* chunk too big for zlib */
+        }
+
+        strm.avail_out = (uInt)remaining;
+        strm.next_out = out + out_size;
+
+        ret = inflate(&strm, Z_NO_FLUSH);
+        if (ret == Z_STREAM_ERROR || ret == Z_DATA_ERROR || ret == Z_MEM_ERROR) {
+            inflateEnd(&strm);
+            free(out);
+            return NULL;
+        }
+
+        out_size = strm.total_out;
+
+        /* If output buffer is full, grow it */
+        if (ret != Z_STREAM_END && strm.avail_out == 0) {
+            out_capacity *= 2;
+            Bytef *tmp = realloc(out, out_capacity);
+            if (tmp == NULL) {
+                inflateEnd(&strm);
+                free(out);
+                return NULL;
+            }
+            out = tmp;
+        }
+    } while (ret != Z_STREAM_END);
+
+    *out_len = out_size;
+
+    inflateEnd(&strm);
+    return out;
+}
+
 static int bpmailrecv(void) {
     DtpcDelivery dlv;
 
@@ -34,8 +107,8 @@ static int bpmailrecv(void) {
     }
 
     char *received_data = malloc(dlv.length);
-    if (!received_data) {
-        fprintf(stderr, "malloc failed\n");
+    if (received_data == NULL) {
+        (void)fprintf(stderr, "malloc failed\n");
         dtpc_release_delivery(&dlv);
         return EXIT_FAILURE;
     }
@@ -43,23 +116,29 @@ static int bpmailrecv(void) {
     sdr_read(sdr, received_data, dlv.item, dlv.length);
 
     if (dlv.length > 4 && strncmp(received_data, "ZLIB", 4) == 0) {
-        Bytef *decompressed = malloc(1024 * 1024);  // 1MB buffer
-        uLongf decompressed_size = 1024 * 1024;
-        if (uncompress(decompressed, &decompressed_size,
-                       (Bytef *)(received_data + 4), (uLong)(dlv.length - 4)) != Z_OK) {
-            fprintf(stderr, "decompression failed\n");
+        /*
+         * Use dynamic decompression instead of fixed 1MB buffer.
+         * This allows receiving messages larger than 1MB.
+         */
+        size_t decompressed_size = 0;
+        Bytef *decompressed = inflate_dynamic(
+            (const Bytef *)(received_data + 4), dlv.length - 4, &decompressed_size);
+
+        if (decompressed == NULL) {
+            (void)fprintf(stderr, "decompression failed\n");
             free(received_data);
-            free(decompressed);
             dtpc_release_delivery(&dlv);
             return EXIT_FAILURE;
         }
-        fwrite(decompressed, 1, decompressed_size, stdout);
+
+        (void)fwrite(decompressed, 1, decompressed_size, stdout);
         free(decompressed);
     } else {
-        fwrite(received_data, 1, dlv.length, stdout);
+        /* Fallback in case content wasn't compressed (e.g., legacy or test data) */
+        (void)fwrite(received_data, 1, dlv.length, stdout);
     }
 
-    fflush(stdout);
+    (void)fflush(stdout);
     free(received_data);
     dtpc_release_delivery(&dlv);
     return EXIT_SUCCESS;
@@ -73,9 +152,10 @@ static void handle_interrupt(int sig) {
 int main(int argc, char **argv) {
     int ch;
     unsigned int topic_id = 25;
+
     while ((ch = getopt(argc, argv, "t:")) != -1) {
         switch (ch) {
-            case 't':
+            case 't': {
                 errno = 0;
                 char *endptr;
                 unsigned long tflag = strtoul(optarg, &endptr, 0);
@@ -92,10 +172,12 @@ int main(int argc, char **argv) {
                 }
                 topic_id = (unsigned int)tflag;
                 break;
+            }
             default:
                 usage();
         }
     }
+
     argc -= optind;
     argv += optind;
 
