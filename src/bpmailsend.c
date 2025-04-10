@@ -1,25 +1,19 @@
-#include "bpmailrecv.h"
+#include "bpmailsend.h"
 
 #include <errno.h>
 #include <limits.h>
-#include <signal.h>
-#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <string.h>
-#include <unistd.h>     
-#include <pthread.h>    
-#include <sys/time.h> 
+#include <unistd.h>
 
 #include "bp.h"
 #include "dtpc.h"
-#include "bpmailsend.h"
 #include "zlib.h"
 
 static char *dest_eid = NULL;
 static unsigned int profile_id = 0;
 static struct dtpcsap_st *sap = NULL;
-static Sdr sdr = NULL;
+static struct sdrv_str *sdr = NULL;
 
 static void usage(void) {
     (void)fprintf(
@@ -63,27 +57,28 @@ static int bpmailsend(void) {
     }
 
     /* Compress content using zlib */
-    const char magic[] = "ZLIB"; /* magic header to identify compressed content */
     uLong compressed_size = compressBound((uLong)content_size);
-    Bytef *compressed = malloc(strlen(magic) + compressed_size);
-
+    Bytef *compressed = malloc(compressed_size);
     if (compressed == NULL) {
         fprintf(stderr, "malloc failed\n");
         free(content);
         return EXIT_FAILURE;
     }
 
-    memcpy(compressed, magic, strlen(magic));
-    if (compress(compressed + strlen(magic), &compressed_size,
-                 (Bytef *)content, (uLong)content_size) != Z_OK) {
+    if (compress(
+            compressed,
+            &compressed_size,
+            (Bytef *)content,
+            (uLong)content_size
+        )
+        != Z_OK)
+    {
         fprintf(stderr, "compression failed\n");
         free(content);
         free(compressed);
         return EXIT_FAILURE;
     }
-
     free(content); /* free original data once compressed */
-    compressed_size += strlen(magic); /* include header in size */
 
     if (sdr_begin_xn(sdr) == 0) {
         (void)fprintf(stderr, "could not initiate a SDR transaction\n");
@@ -107,7 +102,7 @@ static int bpmailsend(void) {
         return EXIT_FAILURE;
     }
 
-    int result = dtpc_send(
+    switch (dtpc_send(
         profile_id,
         sap,
         dest_eid,
@@ -122,14 +117,12 @@ static int bpmailsend(void) {
         BP_STD_PRIORITY,
         adu_payload,
         (unsigned int)compressed_size
-    );
-
-    switch (result) {
+    ))
+    {
         case -1:
             (void)fprintf(stderr, "system failure from dtpc_send\n");
             free(compressed);
             return EXIT_FAILURE;
-
         case 0:
             (void)fprintf(stderr, "could not send payload\n");
             free(compressed);
@@ -142,8 +135,8 @@ static int bpmailsend(void) {
                 (void)fprintf(stderr, "could not free ADU memory from SDR\n");
             }
             return EXIT_FAILURE;
-
         case 1:
+            /* Fall through */
         default:
             break;
     }

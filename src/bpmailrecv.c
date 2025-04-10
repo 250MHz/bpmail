@@ -6,11 +6,10 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <string.h>
-#include <zlib.h>
 
 #include "bp.h"
 #include "dtpc.h"
+#include "zlib.h"
 
 static struct sdrv_str *sdr = NULL;
 static struct dtpcsap_st *sap = NULL;
@@ -22,7 +21,9 @@ static void usage(void) {
 
 /*
  * Decompress zlib data dynamically using the inflate API.
- * This avoids imposing a hard limit like 1MB on message size.
+ * On success, returns a Bytef * pointing to data allocated by malloc(). The
+ * caller is responsible for calling free().
+ * Returns NULL on failure.
  */
 static Bytef *inflate_dynamic(const Bytef *in, size_t in_len, size_t *out_len) {
     int ret;
@@ -47,7 +48,7 @@ static Bytef *inflate_dynamic(const Bytef *in, size_t in_len, size_t *out_len) {
     strm.next_in = (Bytef *)(uintptr_t)in; /* safe cast from const */
     strm.avail_in = (uInt)in_len;
 
-    if ((ret = inflateInit(&strm)) != Z_OK) {
+    if (inflateInit(&strm) != Z_OK) {
         free(out);
         return NULL;
     }
@@ -66,7 +67,8 @@ static Bytef *inflate_dynamic(const Bytef *in, size_t in_len, size_t *out_len) {
         strm.next_out = out + out_size;
 
         ret = inflate(&strm, Z_NO_FLUSH);
-        if (ret == Z_STREAM_ERROR || ret == Z_DATA_ERROR || ret == Z_MEM_ERROR) {
+        if (ret == Z_STREAM_ERROR || ret == Z_DATA_ERROR || ret == Z_MEM_ERROR)
+        {
             inflateEnd(&strm);
             free(out);
             return NULL;
@@ -115,28 +117,20 @@ static int bpmailrecv(void) {
 
     sdr_read(sdr, received_data, dlv.item, dlv.length);
 
-    if (dlv.length > 4 && strncmp(received_data, "ZLIB", 4) == 0) {
-        /*
-         * Use dynamic decompression instead of fixed 1MB buffer.
-         * This allows receiving messages larger than 1MB.
-         */
-        size_t decompressed_size = 0;
-        Bytef *decompressed = inflate_dynamic(
-            (const Bytef *)(received_data + 4), dlv.length - 4, &decompressed_size);
-
-        if (decompressed == NULL) {
-            (void)fprintf(stderr, "decompression failed\n");
-            free(received_data);
-            dtpc_release_delivery(&dlv);
-            return EXIT_FAILURE;
-        }
-
-        (void)fwrite(decompressed, 1, decompressed_size, stdout);
-        free(decompressed);
-    } else {
-        /* Fallback in case content wasn't compressed (e.g., legacy or test data) */
-        (void)fwrite(received_data, 1, dlv.length, stdout);
+    size_t decompressed_size = 0;
+    Bytef *decompressed = inflate_dynamic(
+        (const Bytef *)(received_data),
+        dlv.length,
+        &decompressed_size
+    );
+    if (decompressed == NULL) {
+        (void)fprintf(stderr, "decompression failed\n");
+        free(received_data);
+        dtpc_release_delivery(&dlv);
+        return EXIT_FAILURE;
     }
+    (void)fwrite(decompressed, 1, decompressed_size, stdout);
+    free(decompressed);
 
     (void)fflush(stdout);
     free(received_data);
@@ -219,3 +213,4 @@ int main(int argc, char **argv) {
     dtpc_detach();
     return retval;
 }
+
