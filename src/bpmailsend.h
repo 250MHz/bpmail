@@ -4,4 +4,3 @@
 #include "global.h"
 
 #endif /* BPMAILSEND_H */
-
