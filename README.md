@@ -8,16 +8,22 @@ Scott Johnson's Internet Draft [I-D.johnson-dtn-interplanetary-smtp](https://dat
 
 ## Requirements
 
+[//]: # (TODO: list min version that passes our tests, currently just listing
+the versions we developed with)
+
 * ION 4.1.3s (built with Mbed TLS)
+* GMime 3.2.15 (built with Libidn2)
+* c-ares 1.34.4
 * Meson
-* (Optional) pytest
+* (Optional) pytest, dnslib
 
 ## Installation
 
 (Optional) To run the regression tests, Meson must be able to find a Python
-installation with pytest. You could install pytest in a [virtual environment](https://docs.python.org/3/library/venv.html).
-Activate the virtual environment and install pytest before continuing with the
-build instructions.
+installation with pytest and dnslib. You could install these packages in a
+[virtual environment](https://docs.python.org/3/library/venv.html).
+Activate the virtual environment and install the packages before continuing with
+the build instructions.
 
 ```
 meson setup build

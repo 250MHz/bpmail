@@ -1,23 +1,43 @@
 #include "bpmailrecv.h"
 
 #include <errno.h>
+#include <getopt.h>
 #include <limits.h>
 #include <signal.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
+#include "ares.h"
 #include "bp.h"
 #include "dtpc.h"
+#include "gmime/gmime.h"
 #include "zlib.h"
 
 static struct sdrv_str *sdr = NULL;
 static struct dtpcsap_st *sap = NULL;
+static int verify_ipn = 1;
+static ares_channel_t *channel = NULL;
+
+struct ipn_verify {
+    unsigned long long node_nbr;
+    int success;
+};
 
 static void usage(void) {
-    (void)fprintf(stderr, "usage: bpmailrecv [ -t topic_id ]\n");
+    (void)fprintf(
+        stderr,
+        "%s\n",
+        "usage: bpmailrecv [--no-verify-ipn | -s dns_server_list] [-t topic_id]"
+    );
     exit(EXIT_FAILURE);
 }
+
+static struct option longopts[] = {
+    {"no-verify-ipn", no_argument, &verify_ipn, 0},
+    {NULL, 0, NULL, 0},
+};
 
 /*
  * Decompress zlib data dynamically using the inflate API.
@@ -95,6 +115,47 @@ static Bytef *inflate_dynamic(const Bytef *in, size_t in_len, size_t *out_len) {
     return out;
 }
 
+static void dnsrec_cb(
+    void *arg,
+    ares_status_t status,
+    size_t timeouts,
+    const ares_dns_record_t *dnsrec
+) {
+    (void)timeouts;
+    if (dnsrec == NULL || status != ARES_SUCCESS) {
+        return;
+    }
+    struct ipn_verify *res = arg;
+
+    res->success = 0;
+    size_t rr_cnt = ares_dns_record_rr_cnt(dnsrec, ARES_SECTION_ANSWER);
+    for (size_t i = 0; i < rr_cnt; i++) {
+        const ares_dns_rr_t *rr =
+            ares_dns_record_rr_get_const(dnsrec, ARES_SECTION_ANSWER, i);
+        if (rr == NULL) {
+            (void)fprintf(stderr, "ares_dns_record_rr_get_const: misuse\n");
+            return;
+        }
+
+        if (ares_dns_rr_get_type(rr) != ARES_REC_TYPE_RAW_RR) {
+            continue;
+        }
+
+        size_t len; /* TODO: do we need to keep track of len? */
+        const unsigned char *data =
+            ares_dns_rr_get_bin(rr, ARES_RR_RAW_RR_DATA, &len);
+        uint64_t r_node_nbr = 0;
+        /* data is big endian */
+        for (size_t j = 0; j < sizeof(uint64_t); j++) {
+            r_node_nbr = (r_node_nbr << 8) | data[j];
+        }
+        if (res->node_nbr == r_node_nbr) {
+            res->success = 1;
+            return;
+        }
+    }
+}
+
 static int bpmailrecv(void) {
     DtpcDelivery dlv;
 
@@ -123,17 +184,196 @@ static int bpmailrecv(void) {
         dlv.length,
         &decompressed_size
     );
+    free(received_data);
     if (decompressed == NULL) {
         (void)fprintf(stderr, "decompression failed\n");
-        free(received_data);
         dtpc_release_delivery(&dlv);
         return EXIT_FAILURE;
     }
-    (void)fwrite(decompressed, 1, decompressed_size, stdout);
-    free(decompressed);
-    (void)fflush(stdout);
 
-    free(received_data);
+    g_mime_init();
+
+    GMimeStream *istream = g_mime_stream_mem_new_with_buffer(
+        (char *)decompressed,
+        decompressed_size
+    );
+    if (istream == NULL) {
+        (void)fprintf(stderr, "could not create new GMime memory stream\n");
+        free(decompressed);
+        dtpc_release_delivery(&dlv);
+        return EXIT_FAILURE;
+    }
+
+    /* GObject construction can never fail; parser should never be NULL */
+    GMimeParser *parser = g_mime_parser_new_with_stream(istream);
+    g_object_unref(istream);
+
+    GMimeMessage *message = g_mime_parser_construct_message(parser, NULL);
+    g_object_unref(parser);
+    if (message == NULL) {
+        (void)fprintf(stderr, "could not parse MIME message\n");
+        free(decompressed);
+        dtpc_release_delivery(&dlv);
+        return EXIT_FAILURE;
+    }
+    free(decompressed);
+
+    /*
+     * From this point, we assume `message` is a valid MIME message.
+     * (GMime does not accept some values that should be valid, such as
+     * From: Managing Partners:ben@example.com,carol@example.com;
+     * (taken from Section 4 of RFC 6854).)
+     */
+
+    if (verify_ipn) {
+        /* Parse source EID */
+        if (strncmp("ipn:", dlv.srcEid, 4)) {
+            (void)fprintf(stderr, "source EID does not use ipn URI scheme\n");
+            g_object_unref(message);
+            dtpc_release_delivery(&dlv);
+            return EXIT_FAILURE;
+        }
+        char *node_nbr_str = malloc(strlen(dlv.srcEid) - 4);
+        if (node_nbr_str == NULL) {
+            perror("malloc");
+            g_object_unref(message);
+            dtpc_release_delivery(&dlv);
+            return EXIT_FAILURE;
+        }
+        *node_nbr_str = '\0';
+        const char *start = dlv.srcEid + 4;
+        strncat(node_nbr_str, start, strcspn(start, "."));
+        errno = 0;
+        char *endptr;
+        unsigned long long node_nbr = strtoull(node_nbr_str, &endptr, 0);
+        if (node_nbr_str == endptr) {
+            errno = EINVAL;
+        }
+        if (errno != 0) {
+            perror("strtoull");
+            g_object_unref(message);
+            dtpc_release_delivery(&dlv);
+            return EXIT_FAILURE;
+        }
+        free(node_nbr_str);
+
+        InternetAddressList *list = g_mime_message_get_from(message);
+        if (list == NULL) {
+            (void)fprintf(
+                stderr,
+                "could not extract mailbox-list from RFC5322.From header\n"
+            );
+            g_object_unref(message);
+            dtpc_release_delivery(&dlv);
+            return EXIT_FAILURE;
+        }
+        for (int i = 0; i < internet_address_list_length(list); i++) {
+            InternetAddressMailbox *mb = (InternetAddressMailbox *)
+                internet_address_list_get_address(list, i);
+            if (mb == NULL) {
+                (void)fprintf(
+                    stderr,
+                    "could not extract mailbox from mailbox-list\n"
+                );
+                g_object_unref(message);
+                dtpc_release_delivery(&dlv);
+                return EXIT_FAILURE;
+            }
+            if (mb->addr == NULL) {
+                (void)fprintf(stderr, "could not extract addr from mailbox\n");
+                g_object_unref(message);
+                dtpc_release_delivery(&dlv);
+                return EXIT_FAILURE;
+            }
+            const char *idn_addr = internet_address_mailbox_get_idn_addr(mb);
+            if (idn_addr == NULL) {
+                (void)fprintf(stderr, "could not get IDN encoded addr-spec\n");
+                g_object_unref(message);
+                dtpc_release_delivery(&dlv);
+                return EXIT_FAILURE;
+            }
+            const char *domain = idn_addr + mb->at + 1;
+
+            struct ipn_verify res = {node_nbr, 0};
+
+            /* Perform query */
+            ares_status_t status = ares_query_dnsrec(
+                channel,
+                domain,
+                ARES_CLASS_IN,
+                264, /* IPN RRTYPE value */
+                dnsrec_cb,
+                &res,
+                NULL
+            );
+            if (status != ARES_SUCCESS) {
+                (void)fprintf(
+                    stderr,
+                    "failed to enqueue query: %s\n",
+                    ares_strerror((int)status)
+                );
+                g_object_unref(message);
+                dtpc_release_delivery(&dlv);
+                return EXIT_FAILURE;
+            }
+
+            /* Wait until no more requests are left to be processed */
+            ares_queue_wait_empty(channel, -1);
+
+            if (!res.success) {
+                (void)fprintf(stderr, "IPN verification failed\n");
+                g_object_unref(message);
+                dtpc_release_delivery(&dlv);
+                return EXIT_FAILURE;
+            }
+        }
+    }
+
+    while (g_mime_header_list_contains(
+        message->parent_object.headers,
+        "Return-Path"
+    ))
+    {
+        g_mime_header_list_remove(
+            message->parent_object.headers,
+            "Return-Path"
+        );
+    }
+
+    GMimeStream *ostream = g_mime_stream_pipe_new(fileno(stdout));
+    if (ostream == NULL) {
+        (void)fprintf(stderr, "could not create stream pipe around stdout\n");
+        g_object_unref(ostream);
+        g_object_unref(message);
+        dtpc_release_delivery(&dlv);
+        return EXIT_FAILURE;
+    }
+    g_mime_stream_pipe_set_owner((GMimeStreamPipe *)ostream, FALSE);
+    /*
+     * g_mime_format_options_new() uses g_slice_new() which can never return
+     * NULL.
+     */
+    GMimeFormatOptions *format = g_mime_format_options_new();
+    g_mime_format_options_set_newline_format(format, GMIME_NEWLINE_FORMAT_DOS);
+    if (g_mime_object_write_to_stream((GMimeObject *)message, format, ostream)
+        == -1)
+    {
+        (void)fprintf(stderr, "could not write data to stdout\n");
+        g_object_unref(ostream);
+        g_object_unref(message);
+        dtpc_release_delivery(&dlv);
+        return EXIT_FAILURE;
+    }
+    if (g_mime_stream_flush(ostream) == -1) {
+        (void)fprintf(stderr, "could not sync stream to disk\n");
+        g_object_unref(ostream);
+        g_object_unref(message);
+        dtpc_release_delivery(&dlv);
+        return EXIT_FAILURE;
+    }
+    g_object_unref(ostream);
+    g_object_unref(message);
+
     dtpc_release_delivery(&dlv);
     return EXIT_SUCCESS;
 }
@@ -146,8 +386,9 @@ static void handle_interrupt(int sig) {
 int main(int argc, char **argv) {
     int ch;
     unsigned int topic_id = 25;
+    char *servers = NULL;
 
-    while ((ch = getopt(argc, argv, "t:")) != -1) {
+    while ((ch = getopt_long(argc, argv, "t:s:", longopts, NULL)) != -1) {
         switch (ch) {
             case 't': {
                 errno = 0;
@@ -158,25 +399,77 @@ int main(int argc, char **argv) {
                 }
                 if (errno != 0) {
                     perror("strtoul");
+                    free(servers);
                     exit(EXIT_FAILURE);
                 }
                 if (tflag > UINT_MAX) {
                     (void)fprintf(stderr, "topic_id out of range\n");
+                    free(servers);
                     exit(EXIT_FAILURE);
                 }
                 topic_id = (unsigned int)tflag;
                 break;
             }
+            case 's':
+                servers = strdup(optarg);
+                break;
+            case 0:
+                break;
             default:
+                free(servers);
                 usage();
         }
     }
-
     argc -= optind;
     argv += optind;
 
     if (argc != 0) {
+        free(servers);
         usage();
+    }
+
+    if (verify_ipn) {
+        int status;
+        status = ares_library_init(ARES_LIB_INIT_ALL);
+        if (status != ARES_SUCCESS) {
+            (void)fprintf(
+                stderr,
+                "c-ares library initialization issue: %s\n",
+                ares_strerror(status)
+            );
+            free(servers);
+            exit(EXIT_FAILURE);
+        }
+        if (!ares_threadsafety()) {
+            (void)fprintf(stderr, "c-ares not compiled with thread support\n");
+            free(servers);
+            exit(EXIT_FAILURE);
+        }
+
+        struct ares_options options = {0};
+        int optmask = 0;
+        optmask |= ARES_OPT_EVENT_THREAD;
+        options.evsys = ARES_EVSYS_DEFAULT;
+
+        status = ares_init_options(&channel, &options, optmask);
+        if (status != ARES_SUCCESS) {
+            (void)fprintf(
+                stderr,
+                "c-ares initialization issue: %s\n",
+                ares_strerror(status)
+            );
+            free(servers);
+            exit(EXIT_FAILURE);
+        }
+
+        if (servers != NULL) {
+            status = ares_set_servers_csv(channel, servers);
+            free(servers);
+            if (status != ARES_SUCCESS) {
+                (void)fprintf(stderr, "invalid format for list of servers\n");
+                exit(EXIT_FAILURE);
+            }
+        }
     }
 
     if (dtpc_attach() != 0) {
@@ -211,5 +504,9 @@ int main(int argc, char **argv) {
 
     dtpc_close(sap);
     dtpc_detach();
+    if (verify_ipn) {
+        ares_destroy(channel);
+        ares_library_cleanup();
+    }
     return retval;
 }
