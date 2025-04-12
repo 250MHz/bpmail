@@ -2,11 +2,14 @@ from __future__ import annotations
 
 import os
 import subprocess
-from typing import BinaryIO, Sequence
+from typing import TYPE_CHECKING
 
 import pytest
 
 from resolver import get_dns_server
+
+if TYPE_CHECKING:
+    from typing import BinaryIO
 
 profile_id = '1'
 dest_eid = 'ipn:1.129'
@@ -18,7 +21,7 @@ messages_prefix = f'{test_dir_str}/messages'
 
 
 def run_bpmailsend(
-    *cmdline: Sequence[str], input=None, capture_output: bool = True, check: bool = True
+    *cmdline: str, input=None, capture_output: bool = True, check: bool = True
 ) -> subprocess.CompletedProcess:
     bpmailsend_path = os.getenv('TEST_BPMAILSEND_BINARY', 'bpmailsend')
     if input is None:
@@ -38,7 +41,7 @@ def run_bpmailsend(
 
 
 def run_bpmailrecv(
-    *cmdline: Sequence[str], capture_output: bool = True, check: bool = True
+    *cmdline: str, capture_output: bool = True, check: bool = True
 ) -> subprocess.CompletedProcess:
     bpmailrecv_path = os.getenv('TEST_BPMAILRECV_BINARY', 'bpmailrecv')
     return subprocess.run(
