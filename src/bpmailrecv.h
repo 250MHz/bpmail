@@ -4,4 +4,3 @@
 #include "global.h"
 
 #endif /* BPMAILRECV_H */
-

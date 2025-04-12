@@ -17,4 +17,3 @@ bpmailrecv_exe = executable(
     include_directories: incdir,
     install: true,
 )
-

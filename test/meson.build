@@ -20,4 +20,3 @@ test(
     },
     timeout: -1,
 )
-

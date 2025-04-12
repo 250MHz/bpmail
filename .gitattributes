@@ -3,4 +3,3 @@
 *.py diff=python
 *.md diff=markdown
 test/message.txt -text
-

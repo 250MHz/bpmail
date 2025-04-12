@@ -137,4 +137,3 @@ def test_recv_ion_not_running():
     recv = run_bpmailrecv(check=False)
     assert recv.returncode != 0
     assert b'could not attach to DTPC' in recv.stderr
-

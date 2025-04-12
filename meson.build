@@ -38,4 +38,3 @@ lib_ici = cc.find_library('ici', dirs: ['/usr/local/lib'], required: true)
 
 subdir('src')
 subdir('test')
-
