@@ -19,7 +19,7 @@ static void usage(void) {
     (void)fprintf(
         stderr,
         "%s\n",
-        "usage: bpmailsend [ -t topic_id ] profile_id dest_eid"
+        "usage: bpmailsend [-t topic_id] profile_id dest_eid"
     );
     exit(EXIT_FAILURE);
 }
