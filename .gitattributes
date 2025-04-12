@@ -2,4 +2,4 @@
 *.[ch] diff=cpp
 *.py diff=python
 *.md diff=markdown
-test/message.txt -text
+test/messages/* -text

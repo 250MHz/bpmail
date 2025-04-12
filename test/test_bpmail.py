@@ -2,13 +2,19 @@ from __future__ import annotations
 
 import os
 import subprocess
-from typing import Sequence
+from typing import BinaryIO, Sequence
 
 import pytest
 
+from resolver import get_dns_server
+
 profile_id = '1'
 dest_eid = 'ipn:1.129'
+dns_addr = os.getenv('DNS_TEST_ADDRESS', '127.0.0.1')
+dns_port = int(os.getenv('DNS_TEST_PORT', '5300'))
+recv_s_arg = f'-s {dns_addr}:{dns_port}'
 test_dir_str = os.getenv('TEST_DIR', 'test')
+messages_prefix = f'{test_dir_str}/messages'
 
 
 def run_bpmailsend(
@@ -40,6 +46,13 @@ def run_bpmailrecv(
     )
 
 
+def peek_line(f: BinaryIO) -> bytes:
+    pos = f.tell()
+    line = f.readline()
+    f.seek(pos)
+    return line
+
+
 @pytest.fixture(scope='session', autouse=True)
 def kill_ion():
     subprocess.run('killm', check=True)
@@ -52,12 +65,102 @@ class TestWithIon:
         yield
         subprocess.run('killm', check=True)
 
-    def test_basic(self):
-        with open(f'{test_dir_str}/message.txt', mode='rb') as message:
-            message = message.read()
-            run_bpmailsend(profile_id, dest_eid, input=message)
-            recv = run_bpmailrecv()
-            assert message == recv.stdout
+    @pytest.fixture(scope='class', autouse=True)
+    def dns(self):
+        server = get_dns_server(dns_port)
+        server.start_thread()
+        yield
+        server.stop()
+
+    def test_verify_ipn_pass_one_address(self):
+        with open(f'{messages_prefix}/node_nbr_1_one_addr.eml', mode='rb') as m:
+            ret_path = peek_line(m)
+            data = m.read()
+            run_bpmailsend(profile_id, dest_eid, input=data)
+            recv = run_bpmailrecv(recv_s_arg)
+            assert ret_path not in recv.stdout
+            assert data.removeprefix(ret_path) == recv.stdout
+
+    def test_verify_ipn_pass_multiple_rr_one_address(self):
+        with open(f'{messages_prefix}/node_nbr_1-2-3_one_addr.eml', mode='rb') as m:
+            ret_path = peek_line(m)
+            data = m.read()
+            run_bpmailsend(profile_id, dest_eid, input=data)
+            recv = run_bpmailrecv(recv_s_arg)
+            assert ret_path not in recv.stdout
+            assert data.removeprefix(ret_path) == recv.stdout
+
+    def test_verify_ipn_pass_one_idn_address(self):
+        with open(f'{messages_prefix}/node_nbr_1_one_idn_addr.eml', mode='rb') as m:
+            ret_path = peek_line(m)
+            data = m.read()
+            run_bpmailsend(profile_id, dest_eid, input=data)
+            recv = run_bpmailrecv(recv_s_arg)
+            assert ret_path not in recv.stdout
+            assert data.removeprefix(ret_path) == recv.stdout
+
+    def test_verify_ipn_pass_multiple_address(self):
+        with open(f'{messages_prefix}/node_nbr_1_mult_addr.eml', mode='rb') as m:
+            ret_path = peek_line(m)
+            data = m.read()
+            run_bpmailsend(profile_id, dest_eid, input=data)
+            recv = run_bpmailrecv(recv_s_arg)
+            assert ret_path not in recv.stdout
+            assert data.removeprefix(ret_path) == recv.stdout
+
+    def test_verify_ipn_fail_one_address(self):
+        with open(f'{messages_prefix}/node_nbr_2_one_addr.eml', mode='rb') as m:
+            run_bpmailsend(profile_id, dest_eid, input=m.read())
+            recv = run_bpmailrecv(recv_s_arg, check=False)
+            assert recv.returncode != 0
+            assert b'IPN verification failed' in recv.stderr
+
+    def test_verify_ipn_fail_multiple_address(self):
+        with open(f'{messages_prefix}/node_nbr_2-3-5_one_addr.eml', mode='rb') as m:
+            run_bpmailsend(profile_id, dest_eid, input=m.read())
+            recv = run_bpmailrecv(recv_s_arg, check=False)
+            assert recv.returncode != 0
+            assert b'IPN verification failed' in recv.stderr
+
+    def test_verify_ipn_fail_one_idn_address(self):
+        with open(f'{messages_prefix}/node_nbr_2_one_idn_addr.eml', mode='rb') as m:
+            run_bpmailsend(profile_id, dest_eid, input=m.read())
+            recv = run_bpmailrecv(recv_s_arg, check=False)
+            assert recv.returncode != 0
+            assert b'IPN verification failed' in recv.stderr
+
+    def test_verify_ipn_fail_one_multiple_address(self):
+        with open(f'{messages_prefix}/node_nbr_2_mult_addr.eml', mode='rb') as m:
+            run_bpmailsend(profile_id, dest_eid, input=m.read())
+            recv = run_bpmailrecv(recv_s_arg, check=False)
+            assert recv.returncode != 0
+            assert b'IPN verification failed' in recv.stderr
+
+    def test_no_verify_ipn(self):
+        with open(f'{messages_prefix}/node_nbr_2_one_addr.eml', mode='rb') as m:
+            ret_path = peek_line(m)
+            data = m.read()
+            run_bpmailsend(profile_id, dest_eid, input=data)
+            recv = run_bpmailrecv('--no-verify-ipn')
+            assert ret_path not in recv.stdout
+            assert data.removeprefix(ret_path) == recv.stdout
+
+    def test_no_verify_ipn_s_arg_ignored(self):
+        with open(f'{messages_prefix}/node_nbr_2_one_addr.eml', mode='rb') as m:
+            ret_path = peek_line(m)
+            data = m.read()
+            run_bpmailsend(profile_id, dest_eid, input=data)
+            recv = run_bpmailrecv(recv_s_arg, '--no-verify-ipn')
+            assert ret_path not in recv.stdout
+            assert data.removeprefix(ret_path) == recv.stdout
+
+    def test_invalid_mime(self):
+        with open(f'{messages_prefix}/batch_smtp.txt', mode='rb') as m:
+            data = m.read()
+            run_bpmailsend(profile_id, dest_eid, input=data)
+            recv = run_bpmailrecv(check=False)
+            assert recv.returncode != 0
+            assert b'could not parse MIME message' in recv.stderr
 
     def test_send_no_content(self):
         send = run_bpmailsend(profile_id, dest_eid, check=False)
