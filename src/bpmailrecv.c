@@ -17,6 +17,7 @@
 
 static struct sdrv_str *sdr = NULL;
 static struct dtpcsap_st *sap = NULL;
+static int allow_invalid_mime = 0;
 static int verify_ipn = 1;
 static ares_channel_t *channel = NULL;
 
@@ -29,12 +30,14 @@ static void usage(void) {
     (void)fprintf(
         stderr,
         "%s\n",
-        "usage: bpmailrecv [--no-verify-ipn | -s dns_server_list] [-t topic_id]"
+        "usage: bpmailrecv [--allow-invalid-mime] [--no-verify-ipn |"
+        " -s dns_server_list] [-t topic_id]"
     );
     exit(EXIT_FAILURE);
 }
 
 static struct option longopts[] = {
+    {"allow-invalid-mime", no_argument, &allow_invalid_mime, 1},
     {"no-verify-ipn", no_argument, &verify_ipn, 0},
     {NULL, 0, NULL, 0},
 };
@@ -212,8 +215,15 @@ static int bpmailrecv(void) {
     g_object_unref(parser);
     if (message == NULL) {
         (void)fprintf(stderr, "could not parse MIME message\n");
+        if (allow_invalid_mime) {
+            (void)fwrite(decompressed, 1, decompressed_size, stdout);
+            (void)fflush(stdout);
+        }
         free(decompressed);
         dtpc_release_delivery(&dlv);
+        if (allow_invalid_mime) {
+            return EXIT_SUCCESS;
+        }
         return EXIT_FAILURE;
     }
     free(decompressed);
@@ -223,6 +233,8 @@ static int bpmailrecv(void) {
      * (GMime does not accept some values that should be valid, such as
      * From: Managing Partners:ben@example.com,carol@example.com;
      * (taken from Section 4 of RFC 6854).)
+     * So ignore `allow_invalid_mime` and treat a failure to parse a header
+     * as a failure to verify the source EID.
      */
 
     if (verify_ipn) {

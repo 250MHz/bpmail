@@ -162,6 +162,14 @@ class TestWithIon:
             assert recv.returncode != 0
             assert b'could not parse MIME message' in recv.stderr
 
+    def test_allow_invalid_mime(self):
+        with open(f'{messages_prefix}/batch_smtp.txt', mode='rb') as m:
+            data = m.read()
+            run_bpmailsend(profile_id, dest_eid, input=data)
+            recv = run_bpmailrecv('--allow-invalid-mime')
+            assert b'could not parse MIME message' in recv.stderr
+            assert data == recv.stdout
+
     def test_send_no_content(self):
         send = run_bpmailsend(profile_id, dest_eid, check=False)
         assert send.returncode != 0
