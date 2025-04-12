@@ -157,7 +157,7 @@ int main(int argc, char **argv) {
                     errno = EINVAL;
                 }
                 if (errno != 0) {
-                    perror("strtoul()");
+                    perror("strtoul");
                     exit(EXIT_FAILURE);
                 }
                 if (tflag > UINT_MAX) {
