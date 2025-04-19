@@ -14,4 +14,3 @@
 #include <sys/time.h>
 
 #endif /* GLOBAL_H */
-

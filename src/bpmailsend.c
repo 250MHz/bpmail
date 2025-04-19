@@ -19,7 +19,7 @@ static void usage(void) {
     (void)fprintf(
         stderr,
         "%s\n",
-        "usage: bpmailsend [ -t topic_id ] profile_id dest_eid"
+        "usage: bpmailsend [-t topic_id] profile_id dest_eid"
     );
     exit(EXIT_FAILURE);
 }
@@ -159,7 +159,7 @@ int main(int argc, char **argv) {
                     errno = EINVAL;
                 }
                 if (errno != 0) {
-                    perror("strtoul()");
+                    perror("strtoul");
                     exit(EXIT_FAILURE);
                 }
                 if (tflag > UINT_MAX) {
@@ -187,7 +187,7 @@ int main(int argc, char **argv) {
         errno = EINVAL;
     }
     if (errno != 0) {
-        perror("strtoul()");
+        perror("strtoul");
         exit(EXIT_FAILURE);
     }
     if (_profile_id > UINT_MAX) {
@@ -223,4 +223,3 @@ int main(int argc, char **argv) {
     dtpc_detach();
     return retval;
 }
-
