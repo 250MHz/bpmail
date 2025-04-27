@@ -35,3 +35,12 @@ If `meson setup` could find pytest, then you can run the tests with:
 ```
 meson test -C build
 ```
+
+Install with:
+```
+meson install -C build
+```
+Uninstall with:
+```
+ninja uninstall -C build
+```
