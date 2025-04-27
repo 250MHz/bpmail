@@ -1,0 +1,100 @@
+.Dd April 26, 2025
+.Dt BPMAILSEND 1
+.Os
+.Sh NAME
+.Nm bpmailsend
+.Nd send mail to be submitted at another network connected by bundle protocol
+.Sh SYNOPSIS
+.Nm
+.Op Fl t Ar topic_id
+.Ar profile_id
+.Ar dest_eid
+.Sh DESCRIPTION
+The
+.Nm
+utility provides functionality for the sending portion of bpmail.
+.Nm
+reads data from standard input until EOF or until a null character
+.Pq Ql \e0
+is encountered.
+The data is sent with Delay-Tolerant Payload Conditioning (DTPC) on topic
+.Ar topic_id
+with transmission profile
+.Ar profile_id
+to the DTPC application receiving at endpoint
+.Ar dest_eid .
+.Pp
+The specified
+.Ar profile_id
+must be added with
+.Xr dtpcadmin 1 .
+DTPC is implemented such that it must send with service number 128, so an
+endpoint with this service number must be added in
+.Xr bpadmin 1
+and
+.Ar dest_eid
+must be that endpoint.
+.Pp
+The options are:
+.Bl -tag -width Ds
+.It Fl t Ar topic_id
+Send using the DTPC topic identified by
+.Ar topic_id .
+By default, a topic ID of 25 is used.
+.El
+.Pp
+For most use cases,
+.Nm
+will receive messages destined for recipients at the other side of a DTN link
+from a message transfer agent, and
+.Xr bpmailrecv 1
+will be running at the other end of the link at endpoint
+.Ar dest_eid
+and using topic
+.Ar topic_id
+and will submit the data it receives from
+.Nm
+to a message submission agent.
+.Sh EXIT STATUS
+One of the following exit values will be returned:
+.Bl -tag
+.It Dv EXIT_FAILURE
+The operation failed or invalid usage.
+For example,
+.Ar topic_id
+is out of range or could not be opened,
+.Ar profile_id
+is out of range, data could not be read from standard input, data is too
+large to send, or ION and
+.Xr dtpcadmin 1
+are not initialized.
+.It Dv EXIT_SUCCESS
+Successful program execution.
+.El
+.Sh SEE ALSO
+.Xr bpmailrecv 1 ,
+.Xr bpadmin 1 ,
+.Xr dtpcadmin 1
+.Rs
+.%A Scott M. Johnson
+.%D March 18, 2025
+.%I Internet Engineering Task Force
+.%O Work in Progress, Internet-Draft
+.%R draft-johnson-dtn-interplanetary-smtp-01
+.%T A method for delivery of SMTP messages over Bundle Protocol networks.
+.%U https://datatracker.ietf.org/doc/draft-johnson-dtn-interplanetary-smtp/01/
+.Re
+.Sh BUGS
+Due to bpmail consisting of two utilities
+.Nm
+and
+.Xr bpmailrecv 1 ,
+it is not possible to simultaneously send and receive with a single topic ID on
+a node.
+To work around this, the sending and receiving parties need to prenegotiate what
+topics will be used for sending and receiving.
+For example, one node could send at topic ID 1 and receive at topic ID 2, while
+the other node sends at topic ID 2 and receives at topic ID 1.
+.Sh SECURITY CONSIDERATIONS
+To alleviate spoofing, the sending and receiving nodes should have a BPSec
+policy to guarantee authenticity.

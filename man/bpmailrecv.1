@@ -1,0 +1,109 @@
+.Dd April 26, 2025
+.Dt BPMAILRECV 1
+.Os
+.Sh NAME
+.Nm bpmailrecv
+.Nd reception utility for data from
+.Xr bpmailsend 1
+.Sh SYNOPSIS
+.Nm
+.Op Fl -allow-invalid-mime
+.Op Fl -no-verify-ipn | s Ar dns_server_list
+.Op Fl t Ar topic_id
+.Sh DESCRIPTION
+.Nm
+receives data sent from
+.Xr bpmailsend 1
+and outputs the message to standard output.
+"Return-Path" headers will be removed from messages that can be parsed as a
+MIME message.
+.Pp
+.Nm
+rejects messages that cannot be parsed as a MIME message by default.
+By default,
+.Nm
+requests IPN RRTYPE (264) records from the domains of the RFC5322.From
+addresses.
+If there are no records with the sending DTN node's node number,
+then the message will be rejected.
+.Pp
+.Nm
+must receive from the same Delay-Tolerant Payload Conditioning (DTPC) topic
+that
+.Xr bpmailsend 1
+is sending from.
+DTPC is implemented such that it must receive on service number 129, so an
+endpoint with this service number must be added in
+.Xr bpadmin 1 .
+.Pp
+The options are:
+.Bl -tag -width Ds
+.It Fl -allow-invalid-mime
+Do not reject messages that cannot be parsed as a MIME message.
+If data cannot be parsed as a MIME message, then IPN verification will not
+be performed.
+.It Fl -no-verify-ipn
+Accept a message without checking if there are IPN RRTYPE records for the
+RFC5322.From domains with the node number of the sending node.
+.It Fl s Ar dns_server_list
+Set the list of DNS servers to query from.
+.Ar dns_server_list
+is a comma separated list of DNS servers.
+See
+.Xr ares_set_servers_csv 3
+for the description of available formats.
+By default, the name servers specified in
+.Xr resolv.conf 5
+or
+.Xr named.conf 5
+files are contacted.
+.It Fl t Ar topic_id
+Receive using the DTPC topic identified by
+.Ar topic_id .
+By default, a topic ID of 25 is used.
+.El
+.Sh EXIT STATUS
+One of the following exit values will be returned:
+.Bl -tag
+.It Dv EXIT_FAILURE
+The received message was rejected, the operation failed, or invalid usage.
+For example,
+.Fl -allow-invalid-mime
+is not specified and the message cannot be parsed as a MIME message, the
+domains of the "From" addresses do not have IPN records with the source
+node's node number, or ION and
+.Xr dtpcadmin 1
+are not initialized.
+.It Dv EXIT_SUCCESS
+Successful program execution.
+.El
+.Sh SEE ALSO
+.Xr bpmailsend 1 ,
+.Xr bpadmin 1 ,
+.Xr dtpcadmin 1 ,
+.Xr ares_set_servers_csv 3 ,
+.Xr resolv.conf 5 ,
+.Xr named.conf 5
+.Rs
+.%A Scott M. Johnson
+.%D March 18, 2025
+.%I Internet Engineering Task Force
+.%O Work in Progress, Internet-Draft
+.%R draft-johnson-dtn-interplanetary-smtp-01
+.%T A method for delivery of SMTP messages over Bundle Protocol networks.
+.%U https://datatracker.ietf.org/doc/draft-johnson-dtn-interplanetary-smtp/01/
+.Re
+.Sh BUGS
+Due to bpmail consisting of two utilities
+.Xr bpmailsend 1
+and
+.Nm ,
+it is not possible to simultaneously send and receive with a single topic ID on
+a node.
+To work around this, the sending and receiving parties need to prenegotiate what
+topics will be used for sending and receiving.
+For example, one node could send at topic ID 1 and receive at topic ID 2, while
+the other node sends at topic ID 2 and receives at topic ID 1.
+.Sh SECURITY CONSIDERATIONS
+To alleviate spoofing, the sending and receiving nodes should have a BPSec
+policy to guarantee authenticity.
