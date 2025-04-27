@@ -38,3 +38,5 @@ lib_ici = cc.find_library('ici', dirs: ['/usr/local/lib'], required: true)
 
 subdir('src')
 subdir('test')
+
+install_man('man/bpmailsend.1', 'man/bpmailrecv.1')
