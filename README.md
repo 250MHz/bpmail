@@ -11,7 +11,7 @@ Scott Johnson's Internet Draft [I-D.johnson-dtn-interplanetary-smtp](https://dat
 [//]: # (TODO: list min version that passes our tests, currently just listing
 the versions we developed with)
 
-* ION 4.1.3s (built with Mbed TLS)
+* ION 4.2.0
 * GMime 3.2.15 (built with Libidn2)
 * c-ares 1.34.4
 * Meson
@@ -25,8 +25,11 @@ installation with pytest and dnslib. You could install these packages in a
 Activate the virtual environment and install the packages before continuing with
 the build instructions.
 
+To build with ION, the build directory needs to be configured
+to find ION's `.pc` file. E.g.,
+
 ```
-meson setup build
+meson setup --pkg-config-path /usr/local/lib/pkgconfig build
 meson compile -C build
 ```
 

@@ -1,8 +1,11 @@
 zlib_dep = dependency('zlib')
 cares_dep = dependency('libcares')
 gmime_dep = dependency('gmime-3.0')
-deps = [lib_bp, lib_dtpc, lib_ici, zlib_dep, cares_dep, gmime_dep]
-incdir = include_directories('/usr/local/include', is_system: true)
+deps = [ion_dep, lib_dtpc, zlib_dep, cares_dep, gmime_dep]
+incdir = include_directories(
+    ion_dep.get_variable(pkgconfig: 'includedir'),
+    is_system: true,
+)
 
 bpmailsend_exe = executable(
     'bpmailsend',
