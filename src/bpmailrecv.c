@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2025 250MHz
+//
+// SPDX-License-Identifier: BSD-2-Clause
+
 #include <errno.h>
 #include <getopt.h>
 #include <limits.h>

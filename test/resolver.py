@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2025 250MHz
+#
+# SPDX-License-Identifier: BSD-2-Clause
+
 import copy
 
 from dnslib import RCODE, RD, RR, DNSLabel
