@@ -1,5 +1,3 @@
-#include "bpmailsend.h"
-
 #include <errno.h>
 #include <limits.h>
 #include <stdio.h>
